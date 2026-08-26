@@ -1,6 +1,7 @@
 """MCP startup must fail with the role-aware missing-key diagnostic (issue #1125),
 not a wrapped provider error from the first tool call."""
 
+import asyncio
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -79,3 +80,30 @@ class TestStartupKeyValidation:
         ):
             server, _ = srv.create_server()
             assert server is not None
+
+    def test_local_provider_initialization_is_lazy(self, tmp_path: Path) -> None:
+        with (
+            patch.dict(os.environ, {"TARGET_REPO_PATH": str(tmp_path)}),
+            patch.object(
+                type(srv.settings),
+                "active_orchestrator_config",
+                property(lambda self: _local_config()),
+            ),
+            patch.object(
+                type(srv.settings),
+                "active_cypher_config",
+                property(lambda self: _local_config()),
+            ),
+            patch.object(srv, "MemgraphIngestor"),
+            patch.object(srv, "CypherGenerator") as cypher_generator,
+            patch.object(srv, "create_mcp_tools_registry") as create_registry,
+        ):
+            cypher_generator.side_effect = RuntimeError("provider unavailable")
+
+            server, _ = srv.create_server()
+
+            assert server is not None
+            cypher_generator.assert_not_called()
+            lazy_generator = create_registry.call_args.kwargs["cypher_gen"]
+            with pytest.raises(RuntimeError, match="provider unavailable"):
+                asyncio.run(lazy_generator.generate("find callers"))

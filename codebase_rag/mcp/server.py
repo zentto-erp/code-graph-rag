@@ -67,6 +67,26 @@ def get_project_root() -> Path:
     return project_root
 
 
+class _LazyCypherGenerator(CypherGenerator):
+    """Defer provider initialization until a natural-language query needs it.
+
+    Most MCP tools are deterministic and only require Memgraph or the source
+    tree.  Keeping provider startup out of ``create_server`` lets those tools
+    remain available when an optional local LLM is temporarily unavailable.
+    """
+
+    __slots__ = ("_active_projects", "_delegate")
+
+    def __init__(self, active_projects: list[str] | None = None) -> None:
+        self._active_projects = active_projects
+        self._delegate: CypherGenerator | None = None
+
+    async def generate(self, natural_language_query: str) -> str:
+        if self._delegate is None:
+            self._delegate = CypherGenerator(active_projects=self._active_projects)
+        return await self._delegate.generate(natural_language_query)
+
+
 def create_server() -> tuple[Server, MemgraphIngestor]:
     setup_logging()
 
@@ -101,7 +121,7 @@ def create_server() -> tuple[Server, MemgraphIngestor]:
     # Scope Cypher generation to this server's project (named exactly as
     # indexing names it) so queries don't bleed into other projects sharing
     # the database (issue #425).
-    cypher_generator = CypherGenerator(
+    cypher_generator = _LazyCypherGenerator(
         active_projects=[derive_project_name(project_root)]
     )
 
