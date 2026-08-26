@@ -291,7 +291,7 @@ class TestCleanRemovesStamp:
         ):
             (tmp_path / name).write_text(cs.JSON_EMPTY_OBJECT, encoding="utf-8")
 
-        _delete_hash_cache(tmp_path)
+        _delete_hash_cache(tmp_path, tmp_path.name)
 
         assert not (tmp_path / cs.PARSER_FINGERPRINT_FILENAME).exists()
         assert not (tmp_path / cs.HASH_CACHE_FILENAME).exists()

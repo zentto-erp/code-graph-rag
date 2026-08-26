@@ -54,7 +54,11 @@ from .tools.health_checker import HealthChecker
 from .tools.language import cli as language_cli
 from .trace.cli import cli as trace_cli
 from .types_defs import DeadCodeConfig, DeadCodeRow, ResultRow
-from .utils.path_utils import derive_project_name, resolve_repo_path
+from .utils.path_utils import (
+    derive_project_name,
+    resolve_index_state_paths,
+    resolve_repo_path,
+)
 from .vector_store import clear_all_embeddings, delete_project_embeddings
 from .workspaces import WorkspaceConfig, WorkspaceError, load_workspace
 from .workspaces.cli import cli as workspace_cli
@@ -307,7 +311,7 @@ def _run_graph_sync(
             _confirm_destructive_clean(ingestor, project_name, assume_yes)
             _info(style(cs.CLI_MSG_CLEANING_DB, cs.Color.YELLOW))
             ingestor.clean_database()
-            _delete_hash_cache(repo)
+            _delete_hash_cache(repo, project_name)
             # Stale vectors keyed by recycled node ids would crowd out live
             # hits and can map onto unrelated nodes in the rebuilt graph.
             clear_all_embeddings()
@@ -353,8 +357,9 @@ def _run_graph_sync(
         )
 
 
-def _delete_hash_cache(repo_path: Path) -> None:
-    cache_path = repo_path / cs.HASH_CACHE_FILENAME
+def _delete_hash_cache(repo_path: Path, project_name: str) -> None:
+    state = resolve_index_state_paths(repo_path, project_name, settings.CACHE_ROOT)
+    cache_path = state.hash_cache
     if cache_path.exists():
         _info(
             style(
@@ -363,8 +368,8 @@ def _delete_hash_cache(repo_path: Path) -> None:
             )
         )
         cache_path.unlink(missing_ok=True)
-    (repo_path / cs.DIR_MTIMES_FILENAME).unlink(missing_ok=True)
-    (repo_path / cs.PARSER_FINGERPRINT_FILENAME).unlink(missing_ok=True)
+    state.dir_mtimes.unlink(missing_ok=True)
+    state.parser_fingerprint.unlink(missing_ok=True)
 
 
 def _resolve_and_validate_repo(repo_path: str | None) -> Path:
@@ -546,7 +551,7 @@ def start(
             ingestor.clean_database()
 
         clear_all_embeddings()
-        _delete_hash_cache(repo_to_clean)
+        _delete_hash_cache(repo_to_clean, resolved_project_name)
         _info(style(cs.CLI_MSG_CLEAN_DONE, cs.Color.GREEN))
         return
 
@@ -1514,7 +1519,7 @@ def delete_project(
         raise typer.Exit(1) from e
 
     if repo_path:
-        _delete_hash_cache(Path(repo_path))
+        _delete_hash_cache(Path(repo_path), project_name)
 
     _info(
         style(

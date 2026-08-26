@@ -5,7 +5,7 @@ import sys
 import pytest
 
 from codebase_rag import constants as cs
-from codebase_rag.config import ModelConfig, format_missing_api_key_errors
+from codebase_rag.config import AppConfig, ModelConfig, format_missing_api_key_errors
 
 
 def test_import_does_not_walk_parent_directories_for_dotenv(tmp_path) -> None:
@@ -32,6 +32,16 @@ def test_import_does_not_walk_parent_directories_for_dotenv(tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "missing"
+
+
+def test_cgr_cache_root_is_optional_and_loaded_from_environment(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CGR_CACHE_ROOT", str(tmp_path))
+
+    config = AppConfig(_env_file=None)
+
+    assert config.CACHE_ROOT == tmp_path
 
 
 class TestValidateApiKey:
