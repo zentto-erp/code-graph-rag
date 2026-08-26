@@ -86,6 +86,7 @@ from .utils.fqn_resolver import find_function_source_by_fqn
 from .utils.path_utils import (
     cached_file_identity_posix,
     cached_relative_path,
+    resolve_index_state_paths,
     should_keep_dir,
     should_skip_path,
     should_skip_rel_file,
@@ -268,6 +269,9 @@ class GraphUpdater:
         self.project_name = (
             project_name and project_name.strip()
         ) or repo_path.resolve().name
+        self._index_state = resolve_index_state_paths(
+            self.repo_path, self.project_name, settings.CACHE_ROOT
+        )
         self.simple_name_lookup: SimpleNameLookup = defaultdict(set)
         self.function_registry = FunctionRegistryTrie(
             simple_name_lookup=self.simple_name_lookup
@@ -1902,13 +1906,13 @@ class GraphUpdater:
     def _drop_cache_if_graph_lost(self) -> None:
         """Discard the hash cache when the graph no longer holds this project.
 
-        The cache lives inside the repo, but the database is shared: cleaning
-        the database while indexing another repo, an MCP wipe_database, or a
-        fresh Memgraph instance voids the cache without touching it, and an
+        The cache may live inside the repo or under ``CGR_CACHE_ROOT``, but the
+        database is shared: cleaning the database while indexing another repo,
+        an MCP wipe_database, or a fresh Memgraph instance voids the cache, and an
         incremental sync that trusts it would skip every file and leave the
         project silently empty.
         """
-        cache_path = self.repo_path / cs.HASH_CACHE_FILENAME
+        cache_path = self._index_state.hash_cache
         if not cache_path.is_file():
             return
         fetch_all = getattr(self.ingestor, "fetch_all", None)
@@ -1936,15 +1940,13 @@ class GraphUpdater:
             return
         logger.warning(ls.HASH_CACHE_ORPHANED.format(project=self.project_name))
         cache_path.unlink(missing_ok=True)
-        (self.repo_path / cs.DIR_MTIMES_FILENAME).unlink(missing_ok=True)
+        self._index_state.dir_mtimes.unlink(missing_ok=True)
 
     def _warn_if_parser_changed(self) -> None:
         # No hash cache means a full build is coming: nothing to compare.
-        if not (self.repo_path / cs.HASH_CACHE_FILENAME).is_file():
+        if not self._index_state.hash_cache.is_file():
             return
-        stored = _load_parser_fingerprint(
-            self.repo_path / cs.PARSER_FINGERPRINT_FILENAME
-        )
+        stored = _load_parser_fingerprint(self._index_state.parser_fingerprint)
         # A missing stamp on an existing graph means it was built by an
         # unknown (pre-fingerprint) parser: treat it as stale too, without
         # paying for a fingerprint computation that cannot match.
@@ -1956,11 +1958,11 @@ class GraphUpdater:
     def _is_already_in_sync(self) -> bool:
         if self._single_file is not None:
             return False
-        cache_path = self.repo_path / cs.HASH_CACHE_FILENAME
+        cache_path = self._index_state.hash_cache
         if not cache_path.is_file():
             return False
         cache_mtime = cache_path.stat().st_mtime
-        dir_mtimes_path = self.repo_path / cs.DIR_MTIMES_FILENAME
+        dir_mtimes_path = self._index_state.dir_mtimes
         old_hashes = _load_hash_cache(cache_path)
         old_dir_mtimes = _load_dir_mtimes(dir_mtimes_path)
         if not old_hashes or not old_dir_mtimes:
@@ -2080,8 +2082,8 @@ class GraphUpdater:
     def _process_files(self, force: bool = False) -> None:
         self.factory.import_processor.reset_rust_path_caches()
         self.factory.import_processor.reset_java_path_caches()
-        cache_path = self.repo_path / cs.HASH_CACHE_FILENAME
-        dir_mtimes_path = self.repo_path / cs.DIR_MTIMES_FILENAME
+        cache_path = self._index_state.hash_cache
+        dir_mtimes_path = self._index_state.dir_mtimes
         old_hashes = _load_hash_cache(cache_path) if not force else {}
         is_full_build = (force or not old_hashes) and self._single_file is None
         self._is_full_build = is_full_build
@@ -2288,7 +2290,7 @@ class GraphUpdater:
         # the old parser's edges.
         if is_full_build:
             _save_parser_fingerprint(
-                self.repo_path / cs.PARSER_FINGERPRINT_FILENAME,
+                self._index_state.parser_fingerprint,
                 compute_parser_fingerprint(repo_path=self.repo_path),
             )
 

@@ -1,6 +1,8 @@
 import hashlib
+import os
 import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -11,6 +13,53 @@ from .. import constants as cs
 _PROJECT_NAME_INVALID_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
 _PROJECT_NAME_DIGEST_LEN = 8
 _PROJECT_NAME_FALLBACK_BASE = "repo"
+_INDEX_STATE_SLUG_MAX_LENGTH = 80
+
+
+@dataclass(frozen=True)
+class IndexStatePaths:
+    """Filesystem locations for one repository's incremental index state."""
+
+    directory: Path
+    hash_cache: Path
+    dir_mtimes: Path
+    parser_fingerprint: Path
+
+
+def resolve_index_state_paths(
+    repo_path: Path,
+    project_name: str,
+    cache_root: Path | None = None,
+) -> IndexStatePaths:
+    """Resolve index state paths, optionally outside the source repository.
+
+    The external directory is a single sanitised component plus a digest of
+    both the explicit project name and canonical repository path.  This keeps
+    projects isolated even when names or repository basenames match, while
+    preventing either input from being interpreted as a path.
+    """
+
+    if cache_root is None:
+        directory = repo_path
+    else:
+        resolved_root = cache_root.expanduser().resolve()
+        resolved_repo = repo_path.resolve()
+        raw_project_name = project_name.strip()
+        slug = _PROJECT_NAME_INVALID_CHARS.sub("_", raw_project_name).strip("_-")
+        slug = slug[:_INDEX_STATE_SLUG_MAX_LENGTH] or _PROJECT_NAME_FALLBACK_BASE
+        identity = f"{raw_project_name}\0{os.path.normcase(str(resolved_repo))}"
+        digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        directory = (resolved_root / f"{slug}__{digest}").resolve()
+        # Defend against existing symlinks under the cache root as well as
+        # path-like project names.  A valid directory must remain below root.
+        directory.relative_to(resolved_root)
+
+    return IndexStatePaths(
+        directory=directory,
+        hash_cache=directory / cs.HASH_CACHE_FILENAME,
+        dir_mtimes=directory / cs.DIR_MTIMES_FILENAME,
+        parser_fingerprint=directory / cs.PARSER_FINGERPRINT_FILENAME,
+    )
 
 
 def derive_project_name(repo_path: Path) -> str:

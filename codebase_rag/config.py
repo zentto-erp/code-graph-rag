@@ -293,6 +293,7 @@ class AppConfig(BaseSettings):
     EMBEDDING_MAX_LENGTH: int = 512
     EMBEDDING_PROGRESS_INTERVAL: int = 10
     SKIP_EMBEDDINGS: bool = Field(False, validation_alias="CGR_SKIP_EMBEDDINGS")
+    CACHE_ROOT: Path | None = Field(None, validation_alias="CGR_CACHE_ROOT")
     EMBEDDING_DEVICE: cs.EmbeddingDevice | None = Field(
         None, validation_alias="CGR_EMBEDDING_DEVICE"
     )
