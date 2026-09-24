@@ -133,11 +133,12 @@ def string_call_target(
         # every TYPED dispatcher call produced no edge at all.
         #
         # Typing the row is the ordinary way to call such a helper in TypeScript,
-        # so the loss is not marginal: on one ERP it was 842 of roughly 1.100
-        # route -> stored-procedure edges. The procedures they reach then look
-        # unreachable — dead-code analysis accuses them, and "what breaks if I
-        # change this procedure" answers nothing, which is the exact question
-        # declaring the dispatcher was meant to answer.
+        # so the loss is not marginal. Re-indexing one ERP monorepo at the same
+        # commit, this fix and the case fix below took it from 305 edges to 939.
+        # The procedures the dropped calls reach then look unreachable —
+        # dead-code analysis accuses them, and "what breaks if I change this
+        # procedure" answers nothing, which is the exact question declaring the
+        # dispatcher was meant to answer.
         #
         # Skipping `type_*` keeps this language-agnostic: the value list is
         # `arguments` in TS/Rust and `argument_list` in Python, and neither starts

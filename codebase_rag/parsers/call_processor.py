@@ -3200,9 +3200,9 @@ class CallProcessor:
                         # real edge and makes a procedure that runs on every
                         # request look unreachable.
                         #
-                        # Measured on the Zentto ERP: this and the generic-call
-                        # fix together were the difference between 305 and 1.147
-                        # route -> procedure edges. Almost every miss was casing.
+                        # Measured on one ERP monorepo, re-indexing the same
+                        # commit: this and the generic-call fix together took
+                        # route -> procedure edges from 305 to 939.
                         #
                         # Only tried when the exact lookup found nothing, so a
                         # language where case distinguishes two real functions
