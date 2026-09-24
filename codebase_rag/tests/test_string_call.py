@@ -84,6 +84,20 @@ class TestStringCallTarget:
         node = _ts_call_node('callSp("usp_invoice_list", params);')
         assert string_call_target(node, "callSp", SPECS) == "usp_invoice_list"
 
+    def test_resolves_when_the_call_is_typed(self) -> None:
+        # A generic call puts `type_arguments` BEFORE `arguments`, and both
+        # contain "argument". Reading the first one found the type list, looked
+        # for a string literal among the types, and resolved to nothing — so
+        # typed dispatcher calls produced no edge, which in a TypeScript codebase
+        # is most of them.
+        node = _ts_call_node('callSp<InvoiceRow>("usp_invoice_list", params);')
+        assert string_call_target(node, "callSp", SPECS) == "usp_invoice_list"
+
+    def test_resolves_when_typed_and_awaited(self) -> None:
+        # How these helpers are actually written: awaited and typed at once.
+        node = _ts_call_node('await callSp<InvoiceRow[]>("usp_invoice_list");')
+        assert string_call_target(node, "await callSp", SPECS) == "usp_invoice_list"
+
     def test_resolves_when_awaited(self) -> None:
         # The call name arrives decorated by the surrounding expression; in
         # async code virtually every dispatcher call is awaited.

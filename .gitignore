@@ -49,3 +49,4 @@ evals/oracles/scala_oracle/.bsp/
 
 # Runtime call traces (pytest --cgr-trace default output)
 cgr-trace.jsonl
+.zentto/
