@@ -3188,9 +3188,29 @@ class CallProcessor:
                     # find_ending_with takes the BARE last segment: it indexes
                     # last segments and adds the dot itself, so passing
                     # ".usp_x" searches for "..usp_x" and always misses.
-                    for target_qn in resolver.function_registry.find_ending_with(
-                        target_name
-                    ):
+                    matches = resolver.function_registry.find_ending_with(target_name)
+                    if not matches and target_name != target_name.lower():
+                        # The lookup is an exact dict hit, but the string in the
+                        # source and the routine's declared name often differ in
+                        # case alone: callers write `callSp("usp_Users_List")`
+                        # while the SQL declares `usp_users_list`. Both name one
+                        # routine — an unquoted identifier folds to lower case in
+                        # PostgreSQL, and dispatchers typically lower the string
+                        # before sending it — so matching case-sensitively drops a
+                        # real edge and makes a procedure that runs on every
+                        # request look unreachable.
+                        #
+                        # Measured on one ERP monorepo, re-indexing the same
+                        # commit: this and the generic-call fix together took
+                        # route -> procedure edges from 305 to 939.
+                        #
+                        # Only tried when the exact lookup found nothing, so a
+                        # language where case distinguishes two real functions
+                        # keeps its exact match.
+                        matches = resolver.function_registry.find_ending_with(
+                            target_name.lower()
+                        )
+                    for target_qn in matches:
                         ensure_rel(
                             caller_spec,
                             calls_rel,

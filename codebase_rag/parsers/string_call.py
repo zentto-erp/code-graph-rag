@@ -126,8 +126,29 @@ def string_call_target(
     for spec in specs:
         if last_segment != spec.callee:
             continue
+        # `type_arguments` also contains "argument", and in a generic call it
+        # comes FIRST: `callSpOut<UserRow>("usp_users_list")` puts the type list
+        # before the value list. Taking the first match picked the types, looked
+        # for a string literal among them, found `UserRow`, and returned None — so
+        # every TYPED dispatcher call produced no edge at all.
+        #
+        # Typing the row is the ordinary way to call such a helper in TypeScript,
+        # so the loss is not marginal. Re-indexing one ERP monorepo at the same
+        # commit, this fix and the case fix below took it from 305 edges to 939.
+        # The procedures the dropped calls reach then look unreachable —
+        # dead-code analysis accuses them, and "what breaks if I change this
+        # procedure" answers nothing, which is the exact question declaring the
+        # dispatcher was meant to answer.
+        #
+        # Skipping `type_*` keeps this language-agnostic: the value list is
+        # `arguments` in TS/Rust and `argument_list` in Python, and neither starts
+        # with `type_`.
         arguments = next(
-            (child for child in call_node.named_children if "argument" in child.type),
+            (
+                child
+                for child in call_node.named_children
+                if "argument" in child.type and not child.type.startswith("type_")
+            ),
             None,
         )
         if arguments is None:
